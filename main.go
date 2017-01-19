@@ -12,11 +12,16 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
 var (
-	test = flag.Bool("test", false, "Set to include test files")
+	root       = string(filepath.Separator) + "usr" + string(filepath.Separator) + "lib" + string(filepath.Separator) + "go"
+	test       = flag.Bool("test", false, "Set to include test files")
+	printFiles = flag.Bool("files", false, "Set to print output the source files this is dependent on, other prints the packages")
+
+	parsed = make(map[string]bool)
 )
 
 func usage() {
@@ -45,18 +50,30 @@ func main() {
 
 func getDepFiles(path string) ([]string, error) {
 	var deps []string
+	var files []string
 	fs := token.NewFileSet()
 	pkgs, err := parser.ParseDir(fs, path, nil, parser.ImportsOnly)
 	if err != nil {
 		return nil, err
 	}
-	files := getFiles(pkgs)
+	files = getFiles(pkgs)
 	for _, file := range files {
 		fDeps, err := getFileDeps(file)
 		if err != nil {
 			return nil, fmt.Errorf("Error parsing file %s : %v", file, err)
 		}
 		deps = append(deps, fDeps...)
+	}
+
+	if *printFiles {
+		for _, dep := range deps {
+			f, err := getDepFiles(dep)
+			if err != nil {
+				return nil, err
+			}
+			files = append(files, f...)
+		}
+		return files, nil
 	}
 	return deps, nil
 }
@@ -68,6 +85,10 @@ func getFiles(pkgs map[string]*ast.Package) []string {
 			if !*test && strings.HasSuffix(file, "_test.go") {
 				continue
 			}
+			if parsed[file] {
+				continue
+			}
+			parsed[file] = true
 			files = append(files, file)
 		}
 	}
@@ -83,7 +104,33 @@ func getFileDeps(filename string) ([]string, error) {
 	}
 	for _, imp := range aFile.Imports {
 		impPath := imp.Path.Value[1 : len(imp.Path.Value)-1] // strip quotes
+		if impPath == "C" {
+			continue
+		}
+		if parsed[impPath] {
+			continue
+		}
+		parsed[impPath] = true
+		impPath = findPackage(impPath)
+		if impPath == "" {
+			continue
+		}
 		deps = append(deps, impPath)
 	}
 	return deps, nil
+}
+
+func findPackage(impPath string) string {
+	path := root + string(filepath.Separator) + "src" + string(filepath.Separator) + impPath
+	_, err := os.Stat(path)
+	if !os.IsNotExist(err) {
+		return path
+	}
+	fmt.Println(path)
+	path = os.Getenv("GOPATH") + string(filepath.Separator) + "src" + string(filepath.Separator) + impPath
+	_, err = os.Stat(path)
+	if !os.IsNotExist(err) {
+		return path
+	}
+	return ""
 }

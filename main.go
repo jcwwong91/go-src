@@ -17,9 +17,10 @@ import (
 )
 
 var (
-	root       = string(filepath.Separator) + "usr" + string(filepath.Separator) + "lib" + string(filepath.Separator) + "go"
-	test       = flag.Bool("test", false, "Set to include test files")
-	printFiles = flag.Bool("files", false, "Set to print output the source files this is dependent on, other prints the packages")
+	root            = string(filepath.Separator) + "usr" + string(filepath.Separator) + "lib" + string(filepath.Separator) + "go"
+	test            = flag.Bool("test", false, "Set to include test files")
+	printFiles      = flag.Bool("files", false, "Set to print output the source files this is dependent on, other prints the packages")
+	includeMainLibs = flag.Bool("main", false, "Set to include looking through main go libraries")
 
 	parsed = make(map[string]bool)
 )
@@ -32,7 +33,6 @@ func usage() {
 func main() {
 	flag.Parse()
 	args := flag.Args()
-	fmt.Println(args)
 	if len(args) < 1 {
 		usage()
 		os.Exit(1)
@@ -41,6 +41,7 @@ func main() {
 	deps, err := getDepFiles(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v", err)
+		os.Exit(1)
 	}
 	fmt.Println("Total Dependencies: ")
 	for _, dep := range deps {
@@ -121,12 +122,15 @@ func getFileDeps(filename string) ([]string, error) {
 }
 
 func findPackage(impPath string) string {
-	path := root + string(filepath.Separator) + "src" + string(filepath.Separator) + impPath
-	_, err := os.Stat(path)
-	if !os.IsNotExist(err) {
-		return path
+	var path string
+	var err error
+	if *includeMainLibs {
+		path = root + string(filepath.Separator) + "src" + string(filepath.Separator) + impPath
+		_, err := os.Stat(path)
+		if !os.IsNotExist(err) {
+			return path
+		}
 	}
-	fmt.Println(path)
 	path = os.Getenv("GOPATH") + string(filepath.Separator) + "src" + string(filepath.Separator) + impPath
 	_, err = os.Stat(path)
 	if !os.IsNotExist(err) {

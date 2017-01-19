@@ -12,6 +12,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"strings"
 )
 
 var (
@@ -24,13 +25,15 @@ func usage() {
 }
 
 func main() {
-	args := os.Args
-	if len(args) < 2 {
+	flag.Parse()
+	args := flag.Args()
+	fmt.Println(args)
+	if len(args) < 1 {
 		usage()
 		os.Exit(1)
 	}
 
-	deps, err := getDepFiles(args[1])
+	deps, err := getDepFiles(args[0])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "%v", err)
 	}
@@ -62,6 +65,9 @@ func getFiles(pkgs map[string]*ast.Package) []string {
 	var files []string
 	for _, v := range pkgs {
 		for file, _ := range v.Files {
+			if !*test && strings.HasSuffix(file, "_test.go") {
+				continue
+			}
 			files = append(files, file)
 		}
 	}
